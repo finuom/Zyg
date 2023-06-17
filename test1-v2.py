@@ -394,12 +394,19 @@ def main():
   #print 'queue_sizes: %f/%f/%f' % (q[0], q[1], q[2])
   #print 'queuing delay: %d us, batch size: %d pkts' % (shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
 
-  with open('s-log.csv', 'w') as f:
-    writer = csv.writer(f)
-    writer.writerow(["Datetime", "CPU", "Qu. Size", "Qu. Delay (us)", "Batch Size"])
+  LOG_FILE = os.path.expanduser('~') + '/mf-dir/sh-dir/s-log.csv'
 
-  with open('s-log.csv', 'a') as f:
-    while (1 == 1):
+  if not os.path.exists(LOG_FILE):
+    print(LOG_FILE, 'not exists, creating it')
+    with open(LOG_FILE, 'w+') as f:
+      writer = csv.writer(f)
+      writer.writerow(["Datetime", "CPU", "Qu. Size", "Qu. Delay (us)", "Batch Size"])
+      f.close()
+  else:
+    print(LOG_FILE, 'already exists')
+
+  with open(LOG_FILE, 'a') as f:
+    for i in range(14):
       writer = csv.writer(f)
       now = datetime.now()
       row = [now.strftime("%H:%M:%S"), 
@@ -407,9 +414,10 @@ def main():
              shmem.cpu_metrics[cpu].queue_size[0],
              shmem.cpu_metrics[cpu].queuing_delay, 
              shmem.cpu_metrics[cpu].batch_size]
-      print(row)
+      #print(row)
       writer.writerow(row)
       time.sleep(1)
+    f.close()
 
 if __name__ == '__main__':
   main()
