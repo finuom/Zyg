@@ -406,18 +406,21 @@ def main():
     print(LOG_FILE, 'already exists')
 
   with open(LOG_FILE, 'a') as f:
-    for i in range(14):
-      writer = csv.writer(f)
-      now = datetime.now()
-      row = [now.strftime("%H:%M:%S"), 
-             cpu, 
-             shmem.cpu_metrics[cpu].queue_size[0],
-             shmem.cpu_metrics[cpu].queuing_delay, 
-             shmem.cpu_metrics[cpu].batch_size]
-      #print(row)
-      writer.writerow(row)
-      time.sleep(1)
-    f.close()
+    try:
+      while (1 == 1):
+        writer = csv.writer(f)
+        now = datetime.now()
+        row = [now.strftime("%H:%M:%S"), 
+               cpu, 
+               shmem.cpu_metrics[cpu].queue_size[0],
+               shmem.cpu_metrics[cpu].queuing_delay, 
+               shmem.cpu_metrics[cpu].batch_size]
+        #print(row)
+        writer.writerow(row)
+        time.sleep(1)
+    except KeyboardInterrupt:
+      print('closing file')
+      f.close()
 
 if __name__ == '__main__':
   main()
