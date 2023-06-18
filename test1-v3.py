@@ -394,7 +394,7 @@ def main():
   #print 'queue_sizes: %f/%f/%f' % (q[0], q[1], q[2])
   #print 'queuing delay: %d us, batch size: %d pkts' % (shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
 
-  LOG_FILE = os.path.expanduser('~') + '/mf-dir/sh-dir/logs/s-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
+  LOG_FILE = os.path.expanduser('~') + '/mf-dir/sh-dir/logs-batch-64/s-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
 
   if not os.path.exists(LOG_FILE):
     print(LOG_FILE, 'not exists, creating it')
