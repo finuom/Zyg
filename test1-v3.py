@@ -407,7 +407,7 @@ def main():
 
   with open(LOG_FILE, 'a') as f:
     try:
-      for i in range (10):
+      for i in range (15):
         writer = csv.writer(f)
         now = datetime.now()
         row = [now.strftime("%H:%M:%S"), 
