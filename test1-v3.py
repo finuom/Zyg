@@ -393,8 +393,9 @@ def main():
   #q = shmem.cpu_metrics[cpu].queue_size
   #print 'queue_sizes: %f/%f/%f' % (q[0], q[1], q[2])
   #print 'queuing delay: %d us, batch size: %d pkts' % (shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
-
-  LOG_FILE = os.path.expanduser('~') + '/mf-dir/sh-dir/logs-batch-64/s-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
+  LOG_DIR = '/mf-dir/sh-dir/logs-batch-64/'
+  #LOG_FILE = os.path.expanduser('~') + LOG_DIR + 's-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
+  LOG_FILE = os.path.expanduser('~') + LOG_DIR + 's-log-.csv'
 
   if not os.path.exists(LOG_FILE):
     print(LOG_FILE, 'not exists, creating it')
@@ -407,7 +408,8 @@ def main():
 
   with open(LOG_FILE, 'a') as f:
     try:
-      for i in range (15):
+      #for i in range (15):
+      while (1 == 1):
         writer = csv.writer(f)
         now = datetime.now()
         row = [now.strftime("%H:%M:%S"), 
