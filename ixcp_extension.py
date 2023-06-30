@@ -1,5 +1,26 @@
 #!/usr/bin/env python
 
+# Copyright 2013-16 Board of Trustees of Stanford University
+# Copyright 2013-16 Ecole Polytechnique Federale Lausanne (EPFL)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
 import argparse
 import ctypes
 import glob
@@ -12,8 +33,8 @@ import subprocess
 import sys
 import time
 import threading
-import csv
 from datetime import datetime
+import csv
 
 BITS_PER_LONG = 64
 NCPU = 128
@@ -387,43 +408,188 @@ def main():
   shm = posix_ipc.SharedMemory('/ix', 0)
   buffer = mmap.mmap(shm.fd, ctypes.sizeof(ShMem), mmap.MAP_SHARED, mmap.PROT_WRITE)
   shmem = ShMem.from_buffer(buffer)
+  fg_per_cpu = {}
+  for i in xrange(NCPU):
+    fg_per_cpu[i] = []
+  for i in xrange(shmem.nr_flow_groups):
+    cpu = shmem.flow_group[i].cpu
+    fg_per_cpu[cpu].append(i)
 
-  cpu = 0
-  #print('CPU: %d' % (cpu))
-  #q = shmem.cpu_metrics[cpu].queue_size
-  #print 'queue_sizes: %f/%f/%f' % (q[0], q[1], q[2])
-  #print 'queuing delay: %d us, batch size: %d pkts' % (shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
-  LOG_DIR = '/mf-dir/sh-dir/logs-batch-64/'
-  #LOG_FILE = os.path.expanduser('~') + LOG_DIR + 's-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
-  LOG_FILE = os.path.expanduser('~') + LOG_DIR + 'tri-log-IX.csv'
+  """
+  print 'flow group assignments:'
+  for cpu in xrange(NCPU):
+    if len(fg_per_cpu[cpu]) == 0:
+      continue
+    print '  CPU %02d: flow groups %r' % (cpu, fg_per_cpu[cpu])
+  print 'commands running at:',
+  empty = True
+  for i in xrange(NCPU):
+    if shmem.command[i].status != Command.CP_STATUS_READY:
+      print 'CPU %02d,' % i,
+      empty = False
+  if empty:
+    print 'none',
+  print
+  """
 
-  if not os.path.exists(LOG_FILE):
-    print(LOG_FILE, 'not exists, creating it')
-    with open(LOG_FILE, 'w+') as f:
-      writer = csv.writer(f)
-      writer.writerow(["Datetime", "CPU", "Qu. Size", "Qu. Delay (us)", "Batch Size"])
-      f.close()
-  else:
-    print(LOG_FILE, 'already exists')
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--single-cpu', action='store_true')
+  parser.add_argument('--cpus', type=int)
+  parser.add_argument('--cpulist', type=str)
+  parser.add_argument('--idle', type=int)
+  parser.add_argument('--wake-up', type=int)
+  parser.add_argument('--show-metrics', action='store_true')
+  parser.add_argument('--control', type=str, choices=['eff', 'back', 'minmax'])
+  parser.add_argument('--background-fifo', type=str)
+  parser.add_argument('--background-pid', type=int)
+  parser.add_argument('--background-cpus', type=str)
+  parser.add_argument('--print-power', action='store_true')
+  parser.add_argument('--print-queues', action='store_true')
+  parser.add_argument('--show-metrics-v', action='store_true')
+  args = parser.parse_args()
 
-  with open(LOG_FILE, 'a') as f:
-    try:
-      #for i in range (15):
-      while (1 == 1):
+  if args.background_cpus is not None:
+    args.background_cpus = map(int, args.background_cpus.split(','))
+
+  compute_cpu_lists(shmem)
+
+  if args.single_cpu:
+    target_cpu = 0
+    for cpu in xrange(shmem.nr_cpus):
+      if cpu == target_cpu:
+        continue
+      migrate(shmem, cpu, target_cpu, fg_per_cpu[cpu])
+      sys.stdout.write('.')
+      sys.stdout.flush()
+    print
+  elif args.cpus is not None:
+    set_nr_cpus(shmem, fg_per_cpu, args.cpus, verbose = True)
+  elif args.cpulist is not None:
+    cpulist = map(int, args.cpulist.split(','))
+    set_cpulist(shmem, fg_per_cpu, cpulist)
+  elif args.idle is not None:
+    idle(shmem, args.idle)
+  elif args.wake_up is not None:
+    wake_up(shmem, args.wake_up)
+  elif args.show_metrics:
+    for cpu in xrange(shmem.nr_cpus):
+      print 'CPU %d: queuing delay: %d us, batch size: %d pkts' % (cpu, shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
+  elif args.show_metrics_v:
+    LOG_DIR = 'logs'
+    LOG_FILE = os.path.join(LOG_DIR, 's-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S")))
+    #LOG_FILE = os.path.expanduser('~') + LOG_DIR + 'tri-log-IX.csv'
+    if not os.path.exists(LOG_DIR):
+      print('Directory', LOG_DIR, 'not exists, creating it')
+      os.mkdir(LOG_DIR)
+    if not os.path.exists(LOG_FILE):
+      print('File', LOG_FILE, 'not exists, creating it')
+      with open(LOG_FILE, 'w+') as f:
         writer = csv.writer(f)
-        now = datetime.now()
-        row = [now.strftime("%H:%M:%S"), 
-               cpu, 
-               shmem.cpu_metrics[cpu].queue_size[0],
-               shmem.cpu_metrics[cpu].queuing_delay, 
-               shmem.cpu_metrics[cpu].batch_size]
-        print("%s: CPU: %d, Qu. Size: %1.2f, Qu. Delay: %1.2f, Ba. Size: %1.2f" % (row[0], row[1], row[2], row[3], row[4]))
-        writer.writerow(row)
-        time.sleep(1)
-      f.close()
-    except KeyboardInterrupt:
-      print('closing file')
-      f.close()
+        writer.writerow(["Datetime", "CPU", "Qu. Size", "Qu. Delay (us)", "Batch Size"])
+        f.close()
+    else:
+      print(LOG_FILE, 'already exists')
+    with open(LOG_FILE, 'a') as f:
+      try:
+        while (1 == 1):
+          writer = csv.writer(f)
+          now = datetime.now()
+          row = [now.strftime("%H:%M:%S"), 
+                 cpu, 
+                 shmem.cpu_metrics[cpu].queue_size[0],
+                 shmem.cpu_metrics[cpu].queuing_delay, 
+                 shmem.cpu_metrics[cpu].batch_size]
+          print("%s: CPU: %d, Qu. Size: %1.2f, Qu. Delay: %1.2f, Ba. Size: %1.2f" % (row[0], row[1], row[2], row[3], row[4]))
+          writer.writerow(row)
+          time.sleep(1)
+        f.close()
+      except KeyboardInterrupt:
+        print('closing file')
+        f.close()
+  elif args.control is not None:
+    if args.control == 'eff':
+      mode = STEPS_MODE_ENERGY_EFFICIENCY
+    elif args.control == 'back':
+      mode = STEPS_MODE_BACKGROUND_TASK
+    elif args.control == 'minmax':
+      mode = STEPS_MODE_MINMAX
+    steps = get_steps(mode)
+    idle_threshold = calculate_idle_threshold(steps)
+    curr_step_idx = 0
+    new_step_idx = curr_step_idx
+    set_step(shmem, fg_per_cpu, steps[curr_step_idx], STEP_UP, args)
+
+    last_up = 0
+    last_down = 0
+    printed_done = True
+    set_step_done = True
+    migration_times = []
+    while True:
+      now = time.time()
+      print now,
+      fast_queue_size = max([x[0] for x in get_all_metrics(shmem, 'queue_size')])
+      slow_queue_size = avg([x[2] for x in get_all_metrics(shmem, 'queue_size')])
+      idle = avg([x[0] for x in get_all_metrics(shmem, 'idle')])
+      print fast_queue_size,
+      print avg([x[1] for x in get_all_metrics(shmem, 'queue_size')]),
+      print slow_queue_size,
+      print idle,
+      print avg([x[1] for x in get_all_metrics(shmem, 'idle')]),
+      print avg([x[2] for x in get_all_metrics(shmem, 'idle')]),
+      print avg(get_all_metrics(shmem, 'loop_duration')),
+      print
+      if fast_queue_size > 32 and curr_step_idx < len(steps) - 1 and now - last_up >= .2 and now - last_down >= 2:
+        new_step_idx = curr_step_idx + 1
+      elif slow_queue_size < 8 and idle > idle_threshold[curr_step_idx] and curr_step_idx > 0 and now - last_up >= 4 and now - last_down >= 4:
+        new_step_idx = curr_step_idx - 1
+      new_step_idx = int(new_step_idx)
+      if set_step_done and not printed_done:
+        print '# %f control_done' % (now,)
+        if len(migration_times) > 0:
+          print '# %f migration duration min/avg/max = %f/%f/%f ms (%r)' % (now, min(migration_times), sum(migration_times)/len(migration_times), max(migration_times),  migration_times)
+          migration_times = []
+          for i in xrange(scratchpad_idx_prv, shmem.scratchpad_idx):
+            s = shmem.scratchpad[i]
+            print '# migration %d remote_queue_pkts_begin %d remote_queue_pkts_end %d local_queue_pkts %d backlog_before %d backlog_after %d timers %d' % (i, s.remote_queue_pkts_begin, s.remote_queue_pkts_end, s.local_queue_pkts, s.backlog_before, s.backlog_after, s.timers),
+            print ' total %d'   % ((s.ts_migration_end - s.ts_migration_start           ) / shmem.cycles_per_us),
+            print ' structs %d' % ((s.ts_data_structures_done - s.ts_migration_start    ) / shmem.cycles_per_us),
+            print ' var1 %d'    % ((s.ts_first_pkt_at_target - s.ts_data_structures_done) / shmem.cycles_per_us),
+            print ' rpc %d'     % ((s.ts_before_backlog - s.ts_first_pkt_at_target      ) / shmem.cycles_per_us),
+            print ' backlog %d' % ((s.ts_after_backlog - s.ts_before_backlog            ) / shmem.cycles_per_us),
+            print ' lastprv %d' % ((s.ts_last_pkt_at_prev - s.ts_data_structures_done   ) / shmem.cycles_per_us),
+            print ' timer_fired %d' % s.timer_fired,
+            print
+
+            shmem.scratchpad[i].remote_queue_pkts = 0
+            shmem.scratchpad[i].local_queue_pkts = 0
+            shmem.scratchpad[i].backlog = 0
+            shmem.scratchpad[i].migration_duration = 0
+        printed_done = True
+      if curr_step_idx != new_step_idx and set_step_done:
+        if new_step_idx > curr_step_idx:
+          step = 'up'
+          last_up = now
+          dir = STEP_UP
+        else:
+          step = 'down'
+          last_down = now
+          dir = STEP_DOWN
+        curr_step_idx = new_step_idx
+        scratchpad_idx_prv = shmem.scratchpad_idx
+        set_step_done = False
+        printed_done = False
+        thread = threading.Thread(target=set_step, args=(shmem, fg_per_cpu, steps[curr_step_idx], dir, args))
+        thread.daemon = True
+        thread.start()
+        print '# %f control_action %s step=%d x=x freq=%d cpus=%r x=x' % (now, step,curr_step_idx,steps[curr_step_idx]['frequency'],steps[curr_step_idx]['cpus'])
+      time.sleep(.1)
+  elif args.print_power:
+    print shmem.pkg_power
+  elif args.print_queues:
+    for cpu in xrange(shmem.nr_cpus):
+      if shmem.command[cpu].cpu_state == Command.CP_CPU_STATE_RUNNING:
+        q = shmem.cpu_metrics[cpu].queue_size
+        print '%d %f/%f/%f' % (cpu, q[0], q[1], q[2])
 
 if __name__ == '__main__':
   main()

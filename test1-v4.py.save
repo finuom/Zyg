@@ -395,8 +395,10 @@ def main():
   #print 'queuing delay: %d us, batch size: %d pkts' % (shmem.cpu_metrics[cpu].queuing_delay, shmem.cpu_metrics[cpu].batch_size)
   LOG_DIR = '/mf-dir/sh-dir/logs-batch-64/'
   #LOG_FILE = os.path.expanduser('~') + LOG_DIR + 's-log-{}.csv'.format(datetime.now().strftime("%H:%M:%S"))
-  LOG_FILE = os.path.expanduser('~') + LOG_DIR + 'tri-log-IX.csv'
+  LOG_FILE = os.path.expanduser('~') + LOG_DIR + 's-log-.csv
 
+  
+'''
   if not os.path.exists(LOG_FILE):
     print(LOG_FILE, 'not exists, creating it')
     with open(LOG_FILE, 'w+') as f:
@@ -405,7 +407,7 @@ def main():
       f.close()
   else:
     print(LOG_FILE, 'already exists')
-
+  
   with open(LOG_FILE, 'a') as f:
     try:
       #for i in range (15):
@@ -417,13 +419,13 @@ def main():
                shmem.cpu_metrics[cpu].queue_size[0],
                shmem.cpu_metrics[cpu].queuing_delay, 
                shmem.cpu_metrics[cpu].batch_size]
-        print("%s: CPU: %d, Qu. Size: %1.2f, Qu. Delay: %1.2f, Ba. Size: %1.2f" % (row[0], row[1], row[2], row[3], row[4]))
+        #print(row)
         writer.writerow(row)
         time.sleep(1)
       f.close()
     except KeyboardInterrupt:
       print('closing file')
       f.close()
-
+'''
 if __name__ == '__main__':
   main()
